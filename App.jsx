@@ -1,235 +1,138 @@
-import { useState, useEffect, useRef } from 'react';
-import './App.css';
+import { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, getDocs } from 'firebase/firestore';
 
-function App() {
-  const [imageUrl, setImageUrl] = useState('');
-  const [glassesPosition, setGlassesPosition] = useState({ x: 50, y: 50 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [glassesSize, setGlassesSize] = useState(40);
-  const [glassesRotation, setGlassesRotation] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const containerRef = useRef(null);
+const db = getFirestore(initializeApp({
+  apiKey: "AIzaSyAfASez0BnqEkEMxTLqJuE_bsmagV_IH_Y",
+  authDomain: "helpdesk-smit.firebaseapp.com",
+  projectId: "helpdesk-smit",
+  storageBucket: "helpdesk-smit.appspot.com",
+  messagingSenderId: "516701942489",
+  appId: "1:516701942489:web:a8ae8e55eb4125571b84c8"
+}));
 
-  const handleKeyDown = (e) => {
-    if (!imageUrl) return;
-    
-    const moveAmount = e.shiftKey ? 1 : 5; // Fine adjustment with shift key
-    
-    switch (e.key) {
-      case 'ArrowUp':
-        setGlassesPosition(prev => ({ ...prev, y: Math.max(0, prev.y - moveAmount) }));
-        break;
-      case 'ArrowDown':
-        setGlassesPosition(prev => ({ ...prev, y: Math.min(100, prev.y + moveAmount) }));
-        break;
-      case 'ArrowLeft':
-        setGlassesPosition(prev => ({ ...prev, x: Math.max(0, prev.x - moveAmount) }));
-        break;
-      case 'ArrowRight':
-        setGlassesPosition(prev => ({ ...prev, x: Math.min(100, prev.x + moveAmount) }));
-        break;
-      case '+':
-        setGlassesSize(prev => Math.min(100, prev + 5));
-        break;
-      case '-':
-        setGlassesSize(prev => Math.max(10, prev - 5));
-        break;
-      case 'r':
-        setGlassesRotation(prev => (prev + 15) % 360);
-        break;
-      case 'R':
-        setGlassesRotation(prev => (prev - 15) % 360);
-        break;
-      default:
-        break;
-    }
-  };
+export default function App() {
+  const [msg, setMsg] = useState('');
+  const [msgs, setMsgs] = useState([]);
+  const [show, setShow] = useState(true);
 
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDragging || !imageUrl) return;
-    
-    const container = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - container.left) / container.width) * 100;
-    const y = ((e.clientY - container.top) / container.height) * 100;
-    
-    setGlassesPosition({ x, y });
-  };
-
-  const handleWheel = (e) => {
-    if (!imageUrl) return;
-    e.preventDefault();
-    setGlassesSize(prev => Math.max(10, Math.min(100, prev + (e.deltaY > 0 ? -2 : 2))));
-  };
-
-  const loadImage = async () => {
-    if (!imageUrl.trim()) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
+  const send = async () => {
+    if (!msg.trim()) return alert('Please enter a message');
     try {
-      // Test if the image loads successfully
-      await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = imageUrl;
+      await addDoc(collection(db, "messages"), {
+        text: msg,
+        timestamp: new Date()
       });
-      
-      // Reset glasses position for new image
-      setGlassesPosition({ x: 50, y: 50 });
-    } catch (err) {
-      setError('Failed to load image. Please check the URL and try again.');
-      setImageUrl('');
-    } finally {
-      setIsLoading(false);
+      setMsg('');
+      get();
+    } catch {
+      alert('Send failed');
     }
   };
 
-  const handleImageUrlSubmit = (e) => {
-    e.preventDefault();
-    loadImage();
+  const get = async () => {
+    const snap = await getDocs(collection(db, "messages"));
+    setMsgs(snap.docs.map(doc => doc.data().text));
   };
 
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [imageUrl]);
-
-  const getGlassesStyle = () => {
-    return {
-      position: 'absolute',
-      fontSize: `${glassesSize}px`,
-      left: `${glassesPosition.x}%`,
-      top: `${glassesPosition.y}%`,
-      transform: `translate(-50%, -50%) rotate(${glassesRotation}deg)`,
-      cursor: isDragging ? 'grabbing' : 'grab',
-      userSelect: 'none',
-      transition: isDragging ? 'none' : 'transform 0.2s ease',
-      filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))',
-      zIndex: 2
-    };
-  };
+    get();
+  }, []);
 
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <h1>👓 Glasses Overlay Editor</h1>
-        <p className="app-subtitle">Position virtual glasses on any image</p>
-      </header>
-      
-      <div className="app-content">
-        <form onSubmit={handleImageUrlSubmit} className="image-url-form">
-          <div className="input-group">
-            <input
-              type="url"
-              placeholder="Enter image URL (e.g., https://example.com/image.jpg)"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              className="image-input"
-              required
-            />
-            <button 
-              type="submit" 
-              className="load-button"
-              disabled={isLoading || !imageUrl.trim()}
-            >
-              {isLoading ? 'Loading...' : 'Load Image'}
-            </button>
-          </div>
-          {error && <div className="error-message">{error}</div>}
-        </form>
-        
-        <div className="controls-panel">
-          <div className="control-group">
-            <label>Size:</label>
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={glassesSize}
-              onChange={(e) => setGlassesSize(parseInt(e.target.value))}
-            />
-            <span>{glassesSize}px</span>
-          </div>
-          
-          <div className="control-group">
-            <label>Rotation:</label>
-            <input
-              type="range"
-              min="0"
-              max="359"
-              value={glassesRotation}
-              onChange={(e) => setGlassesRotation(parseInt(e.target.value))}
-            />
-            <span>{glassesRotation}°</span>
-          </div>
-          
-          <div className="shortcuts-info">
-            <p>Shortcuts:</p>
-            <ul>
-              <li>Arrow keys: Move glasses</li>
-              <li>+/-: Resize glasses</li>
-              <li>R/r: Rotate glasses</li>
-              <li>Shift + Arrows: Fine movement</li>
-              <li>Mouse wheel: Resize</li>
-            </ul>
-          </div>
-        </div>
-        
-        {imageUrl && !error && (
-          <div 
-            className="image-editor-container"
-            ref={containerRef}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onWheel={handleWheel}
-          >
-            <div className="image-wrapper">
-              <img 
-                src={imageUrl} 
-                alt="User provided" 
-                className="user-image" 
-                onError={(e) => {
-                  e.target.onerror = null; 
-                  e.target.src = 'https://via.placeholder.com/800x500?text=Invalid+Image+URL';
-                  setError('Failed to load image. Showing placeholder instead.');
-                }}
-              />
-              <div 
-                className="glasses" 
-                style={getGlassesStyle()}
-                onMouseDown={handleMouseDown}
-              >
-                👓
-              </div>
-            </div>
-            
-            <div className="position-indicator">
-              Position: X: {glassesPosition.x.toFixed(1)}%, Y: {glassesPosition.y.toFixed(1)}%
-            </div>
-          </div>
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      fontFamily: 'Arial, sans-serif'
+    }}>
+      {/* Top Toggle Button */}
+      <div style={{
+        padding: '10px 20px',
+        background: '#007bff',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <h2 style={{ margin: 0, fontSize: 18 }}>Chat App</h2>
+        <button
+          onClick={() => setShow(!show)}
+          style={{
+            padding: '8px 16px',
+            background: 'white',
+            color: '#007bff',
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontWeight: 600
+          }}
+        >
+          {show ? 'Hide Messages' : 'Show Messages'}
+        </button>
+      </div>
+
+      {/* Message Display Area */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        background: '#f4f4f4',
+        padding: 20
+      }}>
+        {show && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+  {msgs.map((m, i) => (
+    <li key={i} style={{
+      background: 'white',
+      padding: 10,
+      marginBottom: 10,
+      borderRadius: 5,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+      color: 'black'  // <-- added this line
+    }}>
+      {m}
+    </li>
+  ))}
+</ul>
+
         )}
       </div>
-      
-      <footer className="app-footer">
-        <p>Drag to position glasses • Scroll to resize • Use controls for precise adjustments</p>
-      </footer>
+
+      {/* Message Input Section */}
+      <div style={{
+        padding: 10,
+        display: 'flex',
+        borderTop: '1px solid #ccc',
+        background: '#fff'
+      }}>
+        <input
+          value={msg}
+          onChange={e => setMsg(e.target.value)}
+          placeholder="Type a message..."
+          style={{
+            flex: 1,
+            padding: 10,
+            border: '1px solid #ccc',
+            borderRadius: 4,
+            fontSize: 16
+          }}
+        />
+        <button
+          onClick={send}
+          style={{
+            marginLeft: 10,
+            padding: '10px 20px',
+            backgroundColor: '#007bff',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 4,
+            fontSize: 16,
+            cursor: 'pointer'
+          }}
+        >
+          Send
+        </button>
+      </div>
     </div>
   );
 }
-
-export default App;
